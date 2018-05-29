@@ -55,10 +55,6 @@ void onUIButtonB() {
 }
 
 
-void onPenTipPhotogate() {
-  penTipTrigger = true;
-}
-
 void setup() {
 
   pinMode(BUTTON_IN, INPUT_PULLUP);
@@ -77,10 +73,8 @@ void setup() {
 
   // apparently don't need to set pinMode for analog input pins...
   
-  pinMode(PEN_TIP_PHOTOGATE, INPUT_PULLUP);
-  
-  attachInterrupt(PEN_TIP_PHOTOGATE, onPenTipPhotogate, FALLING);
-  
+  pinMode(PEN_TIP_PHOTOGATE, INPUT);
+    
   attachInterrupt(BUTTONA_INT, onUIButtonA, FALLING);
   attachInterrupt(BUTTONB_INT, onUIButtonB, FALLING);
 
@@ -147,7 +141,7 @@ void loop() {
       state = FWSTATE_WAITING_FOR_CAPTURE;
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
-      if ( penTipTrigger ) {
+      if ( digitalRead(PEN_TIP_PHOTOGATE) ) {
         digitalWrite(CAPTURE_ENABLE, HIGH);
         Serial.println("Fly detected, capture enabled");
         Serial.println("Button B to disable capture and reset");
