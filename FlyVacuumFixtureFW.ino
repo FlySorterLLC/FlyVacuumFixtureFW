@@ -8,9 +8,12 @@
 #include "pins.h"
 
 #define BUTTON_DEBOUNCE_MS   200
+#define PAGER_PWM            255
+#define CO2_TIME_MS          2000
 
 volatile int switchA=LOW, switchB=LOW, dispenseButton=0;
 volatile bool penTipTrigger = false;
+unsigned long startTime, endTime;
 
 enum FWState {
   FWSTATE_UNINITIALIZED = 0,
@@ -54,6 +57,18 @@ void onUIButtonB() {
   last_interrupt = this_interrupt;  
 }
 
+void pagerMotor(bool onOff = LOW) {
+  if (onOff) {
+    digitalWrite(GEAR_MOTOR_IN1, LOW);
+    digitalWrite(GEAR_MOTOR_IN2, HIGH);
+    analogWrite(GEAR_MOTOR_PWM, PAGER_PWM);
+  } else {
+    digitalWrite(GEAR_MOTOR_IN1, HIGH);
+    digitalWrite(GEAR_MOTOR_IN2, HIGH);
+    analogWrite(GEAR_MOTOR_PWM, 0);
+  }
+}
+
 
 void setup() {
 
@@ -63,15 +78,20 @@ void setup() {
 
   pinMode(VACUUM_ENABLE, OUTPUT);
   pinMode(CAPTURE_ENABLE, OUTPUT);
-
+  pinMode(EJECT_ENABLE, OUTPUT);
+  
   pinMode(SPEAKER, OUTPUT);
   pinMode(LED1, OUTPUT);
   pinMode(LED2, OUTPUT);
+
+  pinMode(GEAR_MOTOR_IN1, OUTPUT);
+  pinMode(GEAR_MOTOR_IN2, OUTPUT);
+  pinMode(GEAR_MOTOR_PWM, OUTPUT);
   
   digitalWrite(LED1, LOW);
   digitalWrite(LED2, LOW);
 
-  // apparently don't need to set pinMode for analog input pins...
+  analogWrite(GEAR_MOTOR_PWM, 0);
   
   pinMode(PEN_TIP_PHOTOGATE, INPUT);
     
@@ -117,7 +137,10 @@ void loop() {
       // Turn on vacuum, ensure capture vacuum is off
       digitalWrite(VACUUM_ENABLE, HIGH);
       digitalWrite(CAPTURE_ENABLE, LOW);
+      digitalWrite(EJECT_ENABLE, LOW);
+      pagerMotor(HIGH); delay(500); pagerMotor(LOW);
       switchA = switchB = LOW;
+      startTime = endTime = 0;
       state = FWSTATE_INITIALIZED;
       break;
     case FWSTATE_INITIALIZED:
@@ -136,15 +159,21 @@ void loop() {
       }
       break;
     case FWSTATE_DISPENSED:
-      tone(SPEAKER, 440, 200);
       Serial.println("Releasing fly, waiting for photogate to be interrupted");
+      startTime = millis();
+      pagerMotor(HIGH); delay(500); pagerMotor(LOW);
+      tone(SPEAKER, 440, 200);
       state = FWSTATE_WAITING_FOR_CAPTURE;
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
       if ( digitalRead(PEN_TIP_PHOTOGATE) ) {
         digitalWrite(CAPTURE_ENABLE, HIGH);
-        Serial.println("Fly detected, capture enabled");
+        endTime = millis();
+        digitalWrite(EJECT_ENABLE, HIGH); // CO2
+        Serial.print("Fly detected, elapsed time (ms): "); Serial.println(endTime - startTime);
         Serial.println("Button B to disable capture and reset");
+        delay(CO2_TIME_MS);
+        digitalWrite(EJECT_ENABLE, LOW);
         state = FWSTATE_CAPTURED;
       }
       break;
@@ -178,6 +207,23 @@ void loop() {
             Serial.println("Capture enabled");
           }
           break;
+        case '2':
+          if ( digitalRead(EJECT_ENABLE) ) {
+            digitalWrite(EJECT_ENABLE, LOW);
+            Serial.println("CO2 disabled");
+          } else {
+            digitalWrite(EJECT_ENABLE, HIGH);
+            Serial.println("CO2 enabled");
+          }
+          break;
+        case 'P':
+          Serial.println("Enable pager motor");
+          pagerMotor(HIGH);
+          break;
+        case 'p':
+          Serial.println("Disable pager motor");
+          pagerMotor(LOW);
+          break;
         case 'i':
           Serial.print("Vacuum: "); Serial.println(digitalRead(VACUUM_ENABLE));
           Serial.print("Capture: "); Serial.println(digitalRead(CAPTURE_ENABLE));
@@ -189,6 +235,8 @@ void loop() {
           Serial.println(" t   - exit test mode");
           Serial.println(" v   - toggle vacuum");
           Serial.println(" c   - toggle capture");
+          Serial.println(" 2   - toggle CO2");
+          Serial.println(" P/p - toggle pager motor");
           Serial.println(" i   - show info");
           Serial.println(" ?   - show help");
           
