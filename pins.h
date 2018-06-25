@@ -46,6 +46,8 @@
 #define BUTTONA           PIN_D2
 #define BUTTONB           PIN_D3
 
+#define FLASH_ENABLE      PIN_C0
+
 // These come from the datasheet for the processor (AT90USB1286)
 // E.g. Pin PD2 is also labeled INT2
 #define BUTTONA_INT       2

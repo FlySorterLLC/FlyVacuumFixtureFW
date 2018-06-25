@@ -9,11 +9,15 @@
 
 #define BUTTON_DEBOUNCE_MS   200
 #define PAGER_PWM            255
-#define CO2_TIME_MS          2000
+#define FOAM_PWM             150
+#define FOAM_ROLL_TIME_MS    250
+#define CO2_TIME_MS          3000
+#define CO2_DELAY_MS         500
 
 volatile int switchA=LOW, switchB=LOW, dispenseButton=0;
 volatile bool penTipTrigger = false;
 unsigned long startTime, endTime;
+bool foamWheels = false;
 
 enum FWState {
   FWSTATE_UNINITIALIZED = 0,
@@ -76,6 +80,12 @@ void setup() {
   pinMode(BUTTONA, INPUT);
   pinMode(BUTTONB, INPUT);
 
+  // IF BUTTON A IS PUSHED, GO INTO SPECIAL MODE
+  if ( !digitalRead(BUTTONA) ) {
+    foamWheels = true;
+    
+  }
+
   pinMode(VACUUM_ENABLE, OUTPUT);
   pinMode(CAPTURE_ENABLE, OUTPUT);
   pinMode(EJECT_ENABLE, OUTPUT);
@@ -91,6 +101,9 @@ void setup() {
   digitalWrite(LED1, LOW);
   digitalWrite(LED2, LOW);
 
+  pinMode(FLASH_ENABLE, OUTPUT);
+  digitalWrite(FLASH_ENABLE, HIGH);
+  
   analogWrite(GEAR_MOTOR_PWM, 0);
   
   pinMode(PEN_TIP_PHOTOGATE, INPUT);
@@ -104,6 +117,19 @@ void setup() {
 void loop() {
   char serialCmd = 0, testCmd = 0;
   static FWState state = FWSTATE_UNINITIALIZED;
+
+  if ( foamWheels ) {
+    if ( switchB ) {
+      digitalWrite(GEAR_MOTOR_IN1, HIGH); digitalWrite(GEAR_MOTOR_IN2, LOW);
+      analogWrite(GEAR_MOTOR_PWM, FOAM_PWM);
+      delay(FOAM_ROLL_TIME_MS);
+      digitalWrite(GEAR_MOTOR_IN1, HIGH); digitalWrite(GEAR_MOTOR_IN2, HIGH);
+      analogWrite(GEAR_MOTOR_PWM, 0);      
+      switchB = 0;
+    }
+
+    return;
+  }
 
   if (!serialCmd && Serial.available() > 0) {
     serialCmd = Serial.read();
@@ -138,6 +164,7 @@ void loop() {
       digitalWrite(VACUUM_ENABLE, HIGH);
       digitalWrite(CAPTURE_ENABLE, LOW);
       digitalWrite(EJECT_ENABLE, LOW);
+      digitalWrite(FLASH_ENABLE, HIGH);
       pagerMotor(HIGH); delay(500); pagerMotor(LOW);
       switchA = switchB = LOW;
       startTime = endTime = 0;
@@ -167,8 +194,10 @@ void loop() {
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
       if ( digitalRead(PEN_TIP_PHOTOGATE) ) {
+        digitalWrite(FLASH_ENABLE, LOW);
         digitalWrite(CAPTURE_ENABLE, HIGH);
         endTime = millis();
+        delay(CO2_DELAY_MS);
         digitalWrite(EJECT_ENABLE, HIGH); // CO2
         Serial.print("Fly detected, elapsed time (ms): "); Serial.println(endTime - startTime);
         Serial.println("Button B to disable capture and reset");
@@ -207,6 +236,15 @@ void loop() {
             Serial.println("Capture enabled");
           }
           break;
+        case 'f':
+          if ( digitalRead(FLASH_ENABLE) ) {
+            digitalWrite(FLASH_ENABLE, LOW);
+            Serial.println("Flash enabled");
+          } else {
+            digitalWrite(FLASH_ENABLE, HIGH);
+            Serial.println("Flash disabled");
+          }
+          break;
         case '2':
           if ( digitalRead(EJECT_ENABLE) ) {
             digitalWrite(EJECT_ENABLE, LOW);
@@ -235,6 +273,7 @@ void loop() {
           Serial.println(" t   - exit test mode");
           Serial.println(" v   - toggle vacuum");
           Serial.println(" c   - toggle capture");
+          Serial.println(" f   - toggle flash enable");
           Serial.println(" 2   - toggle CO2");
           Serial.println(" P/p - toggle pager motor");
           Serial.println(" i   - show info");
