@@ -15,7 +15,7 @@
 #define CO2_DELAY_MS         500
 
 volatile int switchA=LOW, switchB=LOW, dispenseButton=0;
-volatile bool penTipTrigger = false;
+volatile bool pgTrigger = false;
 unsigned long startTime, endTime;
 bool foamWheels = false;
 
@@ -59,6 +59,10 @@ void onUIButtonB() {
     }
   }
   last_interrupt = this_interrupt;  
+}
+
+void onPG() {
+  pgTrigger = true;
 }
 
 void pagerMotor(bool onOff = LOW) {
@@ -110,6 +114,7 @@ void setup() {
     
   attachInterrupt(BUTTONA_INT, onUIButtonA, FALLING);
   attachInterrupt(BUTTONB_INT, onUIButtonB, FALLING);
+  attachInterrupt(PEN_TIP_PHOTOGATE_INT, onPG, FALLING);
 
 }
 
@@ -182,7 +187,7 @@ void loop() {
         digitalWrite(VACUUM_ENABLE, LOW);
         state = FWSTATE_DISPENSED;
         switchA = LOW;
-        penTipTrigger = LOW;
+        pgTrigger = false;
       }
       break;
     case FWSTATE_DISPENSED:
@@ -193,7 +198,7 @@ void loop() {
       state = FWSTATE_WAITING_FOR_CAPTURE;
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
-      if ( digitalRead(PEN_TIP_PHOTOGATE) ) {
+      if ( pgTrigger ) {
         digitalWrite(FLASH_ENABLE, LOW);
         digitalWrite(CAPTURE_ENABLE, HIGH);
         endTime = millis();
