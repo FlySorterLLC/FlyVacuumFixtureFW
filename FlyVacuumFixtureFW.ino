@@ -1,140 +1,57 @@
 /* Revision History:
- *  
- *  
- *  
- */
+
+   0.01 - 2018.09.24 - Initial version
+
+*/
 
 #include "Arduino.h"
+#include "FlyVacuumFunctions.h"
 #include "pins.h"
 
-#define BUTTON_DEBOUNCE_MS   200
-#define PAGER_PWM            255
-#define FOAM_PWM             150
-#define FOAM_ROLL_TIME_MS    250
-#define CO2_TIME_MS          3000
-#define CO2_DELAY_MS         500
+#define VERSION              "BN FW ver. 0.02"
 
-volatile int switchA=LOW, switchB=LOW, dispenseButton=0;
-volatile bool pgTrigger = false;
-unsigned long startTime, endTime;
-bool foamWheels = false;
+/*
+    Commands
+
+    Each command sends a lowercase response (e.g. an 'f' for 'F') to acknowledge
+    receipt, and then MAY send additional information. For example, the 'B' command
+    will send a hexadecimal number (0-A) when the PC should capture images during
+    fly rotation.
+
+      V - send _V_ersion info
+      I - (re)_I_nitialize
+      T - _T_est mode
+      F - a _F_ly has been sent (close gate, capture fly)
+      B - _B_egin image capture process
+      E - _E_ject fly
+      P - _P_urge any fly that might be in the system
+
+*/
 
 enum FWState {
+  FWSTATE_ERROR = -1,
   FWSTATE_UNINITIALIZED = 0,
   FWSTATE_INITIALIZED = 1,
-  FWSTATE_WAITING_FOR_DISPENSE = 2,
-  FWSTATE_DISPENSED = 3,
-  FWSTATE_WAITING_FOR_CAPTURE = 4,
-  FWSTATE_CAPTURED = 5,
-  FWSTATE_TEST_MODE = 6,
+  FWSTATE_DISPENSED = 2,
+  FWSTATE_WAITING_FOR_CAPTURE = 3,
+  FWSTATE_CAPTURED = 4,
+  FWSTATE_IMAGING = 5,
+  FWSTATE_WAITING_FOR_EJECT = 6,
+  FWSTATE_EJECTING = 7,
+  FWSTATE_TEST_MODE = 8,
 };
 
-
-
-// ISR to debounce UI button A
-void onUIButtonA() {
-  static unsigned long last_interrupt = 0;
-  unsigned long this_interrupt = millis();
-  // If interrupts come faster than BUTTON_DEBOUNCE_MS, assume it's a bounce and ignore
-  if (this_interrupt - last_interrupt > BUTTON_DEBOUNCE_MS)
-  {
-    switchA = HIGH;
-    if ( digitalRead(BUTTONA) == LOW ) { 
-      switchA = HIGH; 
-    }
-  }
-  last_interrupt = this_interrupt;
-}
-
-// ISR to debounce UI button B
-void onUIButtonB() {
-  static unsigned long last_interrupt = 0;
-  unsigned long this_interrupt = millis();
-  // If interrupts come faster than BUTTON_DEBOUNCE_MS, assume it's a bounce and ignore
-  if (this_interrupt - last_interrupt > BUTTON_DEBOUNCE_MS)
-  {
-    switchB = HIGH;
-    if ( digitalRead(BUTTONB) == LOW ) { 
-      switchB = HIGH; 
-    }
-  }
-  last_interrupt = this_interrupt;  
-}
-
-void onPG() {
-  pgTrigger = true;
-}
-
-void pagerMotor(bool onOff = LOW) {
-  if (onOff) {
-    digitalWrite(GEAR_MOTOR_IN1, LOW);
-    digitalWrite(GEAR_MOTOR_IN2, HIGH);
-    analogWrite(GEAR_MOTOR_PWM, PAGER_PWM);
-  } else {
-    digitalWrite(GEAR_MOTOR_IN1, HIGH);
-    digitalWrite(GEAR_MOTOR_IN2, HIGH);
-    analogWrite(GEAR_MOTOR_PWM, 0);
-  }
-}
-
-
 void setup() {
-
-  pinMode(BUTTON_IN, INPUT_PULLUP);
-  pinMode(BUTTONA, INPUT);
-  pinMode(BUTTONB, INPUT);
-
-  // IF BUTTON A IS PUSHED, GO INTO SPECIAL MODE
-  if ( !digitalRead(BUTTONA) ) {
-    foamWheels = true;
-    
-  }
-
-  pinMode(VACUUM_ENABLE, OUTPUT);
-  pinMode(CAPTURE_ENABLE, OUTPUT);
-  pinMode(EJECT_ENABLE, OUTPUT);
-  
-  pinMode(SPEAKER, OUTPUT);
-  pinMode(LED1, OUTPUT);
-  pinMode(LED2, OUTPUT);
-
-  pinMode(GEAR_MOTOR_IN1, OUTPUT);
-  pinMode(GEAR_MOTOR_IN2, OUTPUT);
-  pinMode(GEAR_MOTOR_PWM, OUTPUT);
-  
-  digitalWrite(LED1, LOW);
-  digitalWrite(LED2, LOW);
-
-  pinMode(FLASH_ENABLE, OUTPUT);
-  digitalWrite(FLASH_ENABLE, HIGH);
-  
-  analogWrite(GEAR_MOTOR_PWM, 0);
-  
-  pinMode(PEN_TIP_PHOTOGATE, INPUT);
-    
-  attachInterrupt(BUTTONA_INT, onUIButtonA, FALLING);
-  attachInterrupt(BUTTONB_INT, onUIButtonB, FALLING);
-  attachInterrupt(PEN_TIP_PHOTOGATE_INT, onPG, FALLING);
-
+  setupPins();
 }
 
 
 void loop() {
   char serialCmd = 0, testCmd = 0;
   static FWState state = FWSTATE_UNINITIALIZED;
-
-  if ( foamWheels ) {
-    if ( switchB ) {
-      digitalWrite(GEAR_MOTOR_IN1, HIGH); digitalWrite(GEAR_MOTOR_IN2, LOW);
-      analogWrite(GEAR_MOTOR_PWM, FOAM_PWM);
-      delay(FOAM_ROLL_TIME_MS);
-      digitalWrite(GEAR_MOTOR_IN1, HIGH); digitalWrite(GEAR_MOTOR_IN2, HIGH);
-      analogWrite(GEAR_MOTOR_PWM, 0);      
-      switchB = 0;
-    }
-
-    return;
-  }
+  Status s;
+  unsigned long int startTime;
+  boolean timeOut;
 
   if (!serialCmd && Serial.available() > 0) {
     serialCmd = Serial.read();
@@ -143,147 +60,218 @@ void loop() {
   if (serialCmd) {
 
     if (isspace(serialCmd) || serialCmd == 0) { // ignore spaces
-      
       return;
-      
     } else if (state == FWSTATE_TEST_MODE) {
       testCmd = serialCmd;
-      
-    } else if(serialCmd == 't') {
+    } else if (serialCmd == 'T') {
       Serial.println("Enter test mode");
       testCmd = '?';
       state = FWSTATE_TEST_MODE;
+    } else if (serialCmd == 'F') {
+      if ( state != FWSTATE_INITIALIZED ) {
+        Serial.print("Error: not ready; STATE = "); printState(state);
+      } else {
+        Serial.println("f");
+        state = FWSTATE_DISPENSED;
+      }
+    } else if (serialCmd == 'B') {
+      if ( state != FWSTATE_CAPTURED ) {
+        Serial.print("Error: not ready; STATE = "); printState(state);
+      } else {
+        Serial.println("b");
+        state = FWSTATE_IMAGING;
+      }
+    } else if (serialCmd == 'E') {
+      if ( state != FWSTATE_WAITING_FOR_EJECT ) {
+        Serial.print("Error: not ready; STATE = "); printState(state);
+      } else {
+        Serial.println("e");
+        state = FWSTATE_EJECTING;
+      }
+    } else if (serialCmd == 'I') {
+      state = FWSTATE_UNINITIALIZED;
+    } else if (serialCmd == 'V') {
+      Serial.println(VERSION);
+    } else if (serialCmd == 'S') {
+      printState(state);
     } else {
       Serial.println("Unknown command.");
     }
   }
 
-  if ( switchA && switchB ) {
-    state = FWSTATE_UNINITIALIZED;
-    switchA = switchB = 0;
-  }
-
-  switch( state ) {
+  switch ( state ) {
     case FWSTATE_UNINITIALIZED:
-      // Turn on vacuum, ensure capture vacuum is off
-      digitalWrite(VACUUM_ENABLE, HIGH);
-      digitalWrite(CAPTURE_ENABLE, LOW);
-      digitalWrite(EJECT_ENABLE, LOW);
-      digitalWrite(FLASH_ENABLE, HIGH);
-      pagerMotor(HIGH); delay(500); pagerMotor(LOW);
-      switchA = switchB = LOW;
-      startTime = endTime = 0;
+      s = initialize();
+      if ( s != SUCCESS ) {
+        Serial.print("Initialization failure: "); printStatus(s);
+        state = FWSTATE_ERROR;
+        break;
+      }
+      s = openGate(FRONT_GATE);
+      if ( s != SUCCESS ) {
+        Serial.print("Failed to open front gate: "); printStatus(s);
+        state = FWSTATE_ERROR;
+        break;
+      }      
+      s = openGate(EJECT_GATE);
+      if ( s != SUCCESS ) {
+        Serial.print("Failed to open eject gate: "); printStatus(s);
+        state = FWSTATE_ERROR;
+        break;
+      }      
       state = FWSTATE_INITIALIZED;
       break;
     case FWSTATE_INITIALIZED:
-      tone(SPEAKER, 440, 200);
-      Serial.println("At any point, send 't' for test mode, A & B buttons together for reset");
-      Serial.println("Initialized, waiting for dispense");
-      Serial.println("Button A to indicate fly loaded");
-      state = FWSTATE_WAITING_FOR_DISPENSE;
-      break;
-    case FWSTATE_WAITING_FOR_DISPENSE:
-      if ( switchA ) {
-        digitalWrite(VACUUM_ENABLE, LOW);
-        state = FWSTATE_DISPENSED;
-        switchA = LOW;
-        pgTrigger = false;
-      }
+      // Ready state. Waiting for further input. 
       break;
     case FWSTATE_DISPENSED:
-      Serial.println("Releasing fly, waiting for photogate to be interrupted");
-      startTime = millis();
-      pagerMotor(HIGH); delay(500); pagerMotor(LOW);
-      tone(SPEAKER, 440, 200);
+      // Fly has been dispensed into device
+      s = closeGate(FRONT_GATE);
+      if ( s != SUCCESS ) {
+        Serial.print("Failed to close gate: "); printStatus(s);
+        state = FWSTATE_ERROR;
+        break;
+      }
+      delay(POST_DISPENSE_WAIT_MS);
+      s = openGate(BACK_GATE);
+      if ( s != SUCCESS ) {
+        Serial.print("Failed to open back gate: "); printStatus(s);
+        state = FWSTATE_ERROR;
+        break;
+      }
       state = FWSTATE_WAITING_FOR_CAPTURE;
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
-      if ( pgTrigger ) {
-        digitalWrite(FLASH_ENABLE, LOW);
-        digitalWrite(CAPTURE_ENABLE, HIGH);
-        endTime = millis();
-        delay(CO2_DELAY_MS);
-        digitalWrite(EJECT_ENABLE, HIGH); // CO2
-        Serial.print("Fly detected, elapsed time (ms): "); Serial.println(endTime - startTime);
-        Serial.println("Button B to disable capture and reset");
-        delay(CO2_TIME_MS);
-        digitalWrite(EJECT_ENABLE, LOW);
+      // Back gate is open, waiting for fly to walk
+      s = captureFly();
+      if ( s == SUCCESS ) {
+        Serial.println("c");
         state = FWSTATE_CAPTURED;
+      } else if ( s == PHOTOGATE_FAILURE ) {
+        Serial.println("p");
+        state = FWSTATE_ERROR;
+      } else if ( s == CAPTURE_FAILURE ) {
+        Serial.println("t");
+        state = FWSTATE_ERROR;
+      } else {
+        Serial.print("Unknown error: "); printStatus(s);
+        state = FWSTATE_ERROR;
       }
       break;
     case FWSTATE_CAPTURED:
-      if ( switchB ) {
-        Serial.println("Resetting");
+      // Ready state. Waiting for further input.
+      break;
+    case FWSTATE_IMAGING:
+      s = imageFly();
+      if ( s == SUCCESS ) {
+        Serial.println("b");
+        state = FWSTATE_WAITING_FOR_EJECT;
+      } else if ( s == NEEDLE_TIMEOUT ) {
+        Serial.println("t");
+        state = FWSTATE_ERROR;
+      } else {
+        Serial.print("Unknown error: "); printStatus(s);
+        state = FWSTATE_ERROR;
+      }
+      break;
+      break;
+    case FWSTATE_WAITING_FOR_EJECT:
+      // Ready state. Waiting for further input.
+      break;
+    case FWSTATE_EJECTING:
+      s = ejectFly();
+      if ( s == SUCCESS ) {
+        Serial.println("e");
         state = FWSTATE_UNINITIALIZED;
+      } else if ( s == EJECT_GATE_FAILURE ) {
+        Serial.println("g");
+        state = FWSTATE_ERROR;        
+      } else {
+        Serial.print("Unknown error: "); printStatus(s);
+        state = FWSTATE_ERROR;
       }
       break;
     case FWSTATE_TEST_MODE:
       switch (testCmd) {
-        case 't':
+        case 'T':
           Serial.println("Exit test mode");
           state = FWSTATE_UNINITIALIZED;
           break;
+        case 'i':
+          Serial.println("Switches:");
+          Serial.print("  Eject Open: "); Serial.println(digitalRead(EJECT_SW_OPEN));
+          Serial.print("  Eject Closed: "); Serial.println(digitalRead(EJECT_SW_CLOSED));
+          Serial.print("  Gates Inlet: "); Serial.println(digitalRead(GATE_SW_INPUT));
+          Serial.print("  Gates Outlet: "); Serial.println(digitalRead(GATE_SW_OUTPUT));
+          Serial.print("  Gates Closed: "); Serial.println(digitalRead(GATE_SW_CLOSED));
+          Serial.print("  Needle index: "); Serial.println(digitalRead(NEEDLE_SW));
+          Serial.println("Solenoids:");
+          Serial.print("  Push: "); Serial.println(digitalRead(PUSH_EN));
+          Serial.print("  Eject: "); Serial.println(digitalRead(EJECT_EN));
+          Serial.print("  Fly vac: "); Serial.println(digitalRead(NEEDLE_NEG_EN));
+          Serial.print("  Spare: "); Serial.println(digitalRead(SPARE_EN));
+          Serial.print("Photogate: "); Serial.println(digitalRead(PHOTOGATE));
+          Serial.print("Pressure: "); Serial.println(analogRead(PRESSURE_SENSOR_ADC));
+          break;
         case 'v':
-          if ( digitalRead(VACUUM_ENABLE) ) {
-            digitalWrite(VACUUM_ENABLE, LOW);
-            Serial.println("Vacuum disabled");
-          } else {
-            digitalWrite(VACUUM_ENABLE, HIGH);
-            Serial.println("Vacuum enabled");
-          }
-          break;
-        case 'c':
-          if ( digitalRead(CAPTURE_ENABLE) ) {
-            digitalWrite(CAPTURE_ENABLE, LOW);
-            Serial.println("Capture disabled");
-          } else {
-            digitalWrite(CAPTURE_ENABLE, HIGH);
-            Serial.println("Capture enabled");
-          }
-          break;
-        case 'f':
-          if ( digitalRead(FLASH_ENABLE) ) {
-            digitalWrite(FLASH_ENABLE, LOW);
-            Serial.println("Flash enabled");
-          } else {
-            digitalWrite(FLASH_ENABLE, HIGH);
-            Serial.println("Flash disabled");
-          }
-          break;
-        case '2':
-          if ( digitalRead(EJECT_ENABLE) ) {
-            digitalWrite(EJECT_ENABLE, LOW);
-            Serial.println("CO2 disabled");
-          } else {
-            digitalWrite(EJECT_ENABLE, HIGH);
-            Serial.println("CO2 enabled");
-          }
-          break;
-        case 'P':
-          Serial.println("Enable pager motor");
-          pagerMotor(HIGH);
+          togglePin(NEEDLE_NEG_EN, "Needle vacuum");
           break;
         case 'p':
-          Serial.println("Disable pager motor");
-          pagerMotor(LOW);
+          togglePin(PUSH_EN, "Push");
           break;
-        case 'i':
-          Serial.print("Vacuum: "); Serial.println(digitalRead(VACUUM_ENABLE));
-          Serial.print("Capture: "); Serial.println(digitalRead(CAPTURE_ENABLE));
-          Serial.print("Photogate: "); Serial.println(digitalRead(PEN_TIP_PHOTOGATE));
-          Serial.print("Pressure: "); Serial.println(analogRead(PRESSURE_SENSOR_ADC));
+        case 'e':
+          togglePin(EJECT_EN, "Eject");
+          break;
+        case 's':
+          togglePin(SPARE_EN, "Spare switch");
+          break;
+        case 'd':
+          togglePin(LURE_EN, "LED lure");
+          break;
+        case 'l':
+          togglePin(ILLUM_EN1, "Illumination 1");
+          break;
+        case 'L':
+          togglePin(ILLUM_EN2, "Illumination 2");
+          break;
+        case 'f':
+          s = openGate(FRONT_GATE);
+          printStatus(s);
+          break;
+        case 'b':
+          s = openGate(BACK_GATE);
+          printStatus(s);
+          break;
+        case 'g':
+          s = openGate(EJECT_GATE);
+          printStatus(s);
+          break;
+        case 'c':
+          s = closeGate(FRONT_GATE);
+          printStatus(s);
+          break;
+        case 'C':
+          s = closeGate(EJECT_GATE);
+          printStatus(s);
+          break;
+        case 'r':
+          s = rotateNeedle();
+          printStatus(s);
           break;
         case '?':
           Serial.println("Test mode commands:");
-          Serial.println(" t   - exit test mode");
-          Serial.println(" v   - toggle vacuum");
-          Serial.println(" c   - toggle capture");
-          Serial.println(" f   - toggle flash enable");
-          Serial.println(" 2   - toggle CO2");
-          Serial.println(" P/p - toggle pager motor");
-          Serial.println(" i   - show info");
-          Serial.println(" ?   - show help");
-          
+          Serial.println("   t   - exit test mode");
+          Serial.println("   v   - toggle needle vacuum");
+          Serial.println("   p   - toggle positive 'push' solenoid");
+          Serial.println("   e   - toggle eject solenoid");
+          Serial.println("   s   - toggle spare solenoid");
+          Serial.println("   d   - toggle LED lure");
+          Serial.println("   l/L - toggle camera illumination (1/2)");
+          Serial.println("  c/C  - Close gates/eject gate");
+          Serial.println(" f/b/g - Open front/back/eject gate");
+          Serial.println("   r   - rotate needle one notch");
+          Serial.println("   i   - show status info");
+          Serial.println("   ?   - show help");
           break;
       }
       testCmd = 0;
@@ -294,3 +282,16 @@ void loop() {
 
 
 }
+
+void printState (FWState s) {
+  if ( s == FWSTATE_ERROR ) { Serial.println("FWSTATE_ERROR"); }
+  if ( s == FWSTATE_UNINITIALIZED ) { Serial.println("FWSTATE_UNINITIALIZED"); }
+  if ( s == FWSTATE_INITIALIZED ) { Serial.println("FWSTATE_INITIALIZED"); }
+  if ( s == FWSTATE_DISPENSED ) { Serial.println("FWSTATE_DISPENSED"); }
+  if ( s == FWSTATE_WAITING_FOR_CAPTURE ) { Serial.println("FWSTATE_WAITING_FOR_CAPTURE"); }
+  if ( s == FWSTATE_CAPTURED ) { Serial.println("FWSTATE_CAPTURED"); }
+  if ( s == FWSTATE_IMAGING ) { Serial.println("FWSTATE_IMAGING"); }
+  if ( s == FWSTATE_WAITING_FOR_EJECT ) { Serial.println("FWSTATE_WAITING_FOR_EJECT"); }
+  if ( s == FWSTATE_EJECTING ) { Serial.println("FWSTATE_EJECTING"); }
+}
+
