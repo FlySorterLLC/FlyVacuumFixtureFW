@@ -38,6 +38,13 @@ void setupPins() {
 Status initialize() {
   Status s;
   motorsOff();
+  digitalWrite(PUSH_EN, LOW);
+  digitalWrite(EJECT_EN, LOW);
+  digitalWrite(NEEDLE_NEG_EN, LOW);
+  digitalWrite(LURE_EN, LOW);
+  digitalWrite(ILLUM_EN1, LOW);
+  digitalWrite(ILLUM_EN2, LOW);
+
   if ( digitalRead(PHOTOGATE) != HIGH ) { return PHOTOGATE_FAILURE; }
 
   s = homeGates();
@@ -202,26 +209,38 @@ Status closeGate(Gate g) {
   return SUCCESS;
 }
 
-Status captureFly() {
+Status captureFly(int vacThresh) {
   unsigned long int startTime;
   boolean timeOut;
 
+  Serial.println("captureFly");
+  
   for (int n=0; n < CAPTURE_ATTEMPTS; n++) {
+    Serial.print(" attempt #"); Serial.println(n+1);
     startTime = millis();
     timeOut = false;
     // Wait for photogate trigger (up to PHOTOGATE_TIMEOUT_MS)
     while ( digitalRead(PHOTOGATE) != LOW ) {
-      delay(1);
       if ( millis() - startTime > PHOTOGATE_TIMEOUT_MS ) { timeOut = true; break; }
     }
-    if ( timeOut ) { return PHOTOGATE_FAILURE; }
+    if ( timeOut ) {
+      Serial.println(" PG timeout");
+      if ( n == (CAPTURE_ATTEMPTS-1) ) {
+        return PHOTOGATE_FAILURE;
+      }
+    } else {
 
-    digitalWrite(NEEDLE_NEG_EN, HIGH);
-    digitalWrite(PUSH_EN, HIGH);
-    delay( NEEDLE_CAPTURE_DURATION_MS );
-    if ( getPressure() < CAPTURE_PRESSURE_THRESHOLD ) {
-      digitalWrite(PUSH_EN, LOW);
-      return SUCCESS;
+      Serial.println(" Detected fly");
+      digitalWrite(NEEDLE_NEG_EN, HIGH);
+      digitalWrite(PUSH_EN, HIGH);
+      delay( NEEDLE_CAPTURE_DURATION_MS );
+      Serial.print("  Pressure = "); Serial.println(getPressure());
+      if ( getPressure() < vacThresh ) {
+        Serial.println("  Captured");
+        digitalWrite(PUSH_EN, LOW);
+        return SUCCESS;
+      }  
+      Serial.println("  Missed");
     }
 
     digitalWrite(NEEDLE_NEG_EN, LOW);
@@ -239,7 +258,7 @@ Status imageFly() {
   // Illumination!
   
   for (int n = 0; n < NEEDLE_ROTATION_COUNT; n++) {
-    Serial.println("i"); // Send signal that fly is ready for imaging
+    Serial.println(n, HEX); // Send signal that fly is ready for imaging
     delay(FLY_IMAGING_DELAY_MS);
     s = rotateNeedle(2);
     if ( s != SUCCESS ) { return s; }
@@ -251,12 +270,12 @@ Status imageFly() {
 Status ejectFly() {
   Status s;
 
-  s = openGate(EJECT_GATE);
+  s = closeGate(EJECT_GATE);
   if ( s != SUCCESS ) { return EJECT_GATE_FAILURE; }
   digitalWrite(NEEDLE_NEG_EN, LOW);
   digitalWrite(EJECT_EN, HIGH); delay(FLY_EJECT_DURATION_MS); digitalWrite(EJECT_EN, LOW);
 
-  s = closeGate(EJECT_GATE);
+  s = openGate(EJECT_GATE);
   if ( s != SUCCESS ) { return EJECT_GATE_FAILURE; }
 
   return SUCCESS;

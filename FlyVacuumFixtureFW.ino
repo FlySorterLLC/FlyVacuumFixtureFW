@@ -8,7 +8,7 @@
 #include "FlyVacuumFunctions.h"
 #include "pins.h"
 
-#define VERSION              "BN FW ver. 0.02"
+#define VERSION              "BN FW ver. 0.03"
 
 /*
     Commands
@@ -52,6 +52,7 @@ void loop() {
   Status s;
   unsigned long int startTime;
   boolean timeOut;
+  static int vacThreshold = CAPTURE_PRESSURE_THRESHOLD;
 
   if (!serialCmd && Serial.available() > 0) {
     serialCmd = Serial.read();
@@ -82,7 +83,7 @@ void loop() {
         state = FWSTATE_IMAGING;
       }
     } else if (serialCmd == 'E') {
-      if ( state != FWSTATE_WAITING_FOR_EJECT ) {
+      if ( ( state != FWSTATE_WAITING_FOR_EJECT ) && ( state != FWSTATE_CAPTURED ) ){
         Serial.print("Error: not ready; STATE = "); printState(state);
       } else {
         Serial.println("e");
@@ -132,7 +133,12 @@ void loop() {
         state = FWSTATE_ERROR;
         break;
       }
+      digitalWrite(NEEDLE_NEG_EN, HIGH);
       delay(POST_DISPENSE_WAIT_MS);
+      vacThreshold = getPressure() - 10;
+      if ( vacThreshold < 0 ) { vacThreshold = 20; }
+      Serial.print("Vac threshold set to "); Serial.println(vacThreshold);
+      digitalWrite(NEEDLE_NEG_EN, LOW);
       s = openGate(BACK_GATE);
       if ( s != SUCCESS ) {
         Serial.print("Failed to open back gate: "); printStatus(s);
@@ -143,7 +149,7 @@ void loop() {
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
       // Back gate is open, waiting for fly to walk
-      s = captureFly();
+      s = captureFly(vacThreshold);
       if ( s == SUCCESS ) {
         Serial.println("c");
         state = FWSTATE_CAPTURED;
@@ -211,7 +217,7 @@ void loop() {
           Serial.print("  Fly vac: "); Serial.println(digitalRead(NEEDLE_NEG_EN));
           Serial.print("  Spare: "); Serial.println(digitalRead(SPARE_EN));
           Serial.print("Photogate: "); Serial.println(digitalRead(PHOTOGATE));
-          Serial.print("Pressure: "); Serial.println(analogRead(PRESSURE_SENSOR_ADC));
+          Serial.print("Pressure: "); Serial.println(getPressure());
           break;
         case 'v':
           togglePin(NEEDLE_NEG_EN, "Needle vacuum");
@@ -260,7 +266,7 @@ void loop() {
           break;
         case '?':
           Serial.println("Test mode commands:");
-          Serial.println("   t   - exit test mode");
+          Serial.println("   T   - exit test mode");
           Serial.println("   v   - toggle needle vacuum");
           Serial.println("   p   - toggle positive 'push' solenoid");
           Serial.println("   e   - toggle eject solenoid");
