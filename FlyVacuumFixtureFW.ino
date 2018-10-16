@@ -91,6 +91,8 @@ void loop() {
       }
     } else if (serialCmd == 'I') {
       state = FWSTATE_UNINITIALIZED;
+    } else if (serialCmd == 'P') {
+      state = FWSTATE_EJECTING;
     } else if (serialCmd == 'V') {
       Serial.println(VERSION);
     } else if (serialCmd == 'S') {
@@ -135,7 +137,7 @@ void loop() {
       }
       digitalWrite(NEEDLE_NEG_EN, HIGH);
       delay(POST_DISPENSE_WAIT_MS);
-      vacThreshold = getPressure() - 10;
+      vacThreshold = getPressure() - 5;
       if ( vacThreshold < 0 ) { vacThreshold = 20; }
       Serial.print("Vac threshold set to "); Serial.println(vacThreshold);
       digitalWrite(NEEDLE_NEG_EN, LOW);
@@ -145,6 +147,7 @@ void loop() {
         state = FWSTATE_ERROR;
         break;
       }
+      digitalWrite(LURE_EN, HIGH);
       state = FWSTATE_WAITING_FOR_CAPTURE;
       break;
     case FWSTATE_WAITING_FOR_CAPTURE:
@@ -152,10 +155,11 @@ void loop() {
       s = captureFly(vacThreshold);
       if ( s == SUCCESS ) {
         Serial.println("c");
+        digitalWrite(LURE_EN, LOW);
         state = FWSTATE_CAPTURED;
       } else if ( s == PHOTOGATE_FAILURE ) {
         Serial.println("p");
-        state = FWSTATE_ERROR;
+        state = FWSTATE_EJECTING;
       } else if ( s == CAPTURE_FAILURE ) {
         Serial.println("t");
         state = FWSTATE_ERROR;

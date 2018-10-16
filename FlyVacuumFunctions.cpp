@@ -270,6 +270,8 @@ Status imageFly() {
 Status ejectFly() {
   Status s;
 
+  s = openGate(BACK_GATE);
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
   s = closeGate(EJECT_GATE);
   if ( s != SUCCESS ) { return EJECT_GATE_FAILURE; }
   digitalWrite(NEEDLE_NEG_EN, LOW);
