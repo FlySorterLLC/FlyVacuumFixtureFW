@@ -37,8 +37,8 @@ enum Status {
 
 enum Motor {
   MOTOR_NEEDLE = 0,
-  MOTOR_EJECT = 1,
-  MOTOR_GATE = 2
+  MOTOR_LEFT = 1,
+  MOTOR_RIGHT = 2
 };
 
 enum MotorDirection {

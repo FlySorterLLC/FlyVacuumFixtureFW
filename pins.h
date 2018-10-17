@@ -13,10 +13,10 @@
 #define PHOTOGATE           PIN_B4
 
 // SWITCH INPUTS
-#define EJECT_SW_OPEN       PIN_D4
-#define EJECT_SW_CLOSED     PIN_D1
-#define GATE_SW_INPUT       PIN_D3
-#define GATE_SW_CLOSED      PIN_D2
+#define GATE_SW_LCLOSED     PIN_D1
+#define GATE_SW_RCLOSED     PIN_D2
+#define GATE_SW_EJECT       PIN_D3
+#define GATE_SW_INPUT       PIN_D4
 #define GATE_SW_OUTPUT      PIN_D0
 #define NEEDLE_SW           PIN_E1
 
@@ -41,13 +41,13 @@
 #define NEEDLE_FWD          PIN_C1
 #define NEEDLE_REV          PIN_C0
 
-#define GATE_PWM            PIN_C4
-#define GATE_FWD            PIN_E0
-#define GATE_REV            PIN_D7
+#define RIGHT_PWM            PIN_C4
+#define RIGHT_FWD            PIN_E0
+#define RIGHT_REV            PIN_D7
 
-#define EJECT_PWM           PIN_C5
-#define EJECT_FWD           PIN_D6
-#define EJECT_REV           PIN_D5
+#define LEFT_PWM           PIN_C5
+#define LEFT_FWD           PIN_D6
+#define LEFT_REV           PIN_D5
 
 
 #endif

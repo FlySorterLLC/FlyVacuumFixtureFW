@@ -8,7 +8,7 @@
 #include "FlyVacuumFunctions.h"
 #include "pins.h"
 
-#define VERSION              "BN FW ver. 0.03"
+#define VERSION              "BN FW ver. 0.04"
 
 /*
     Commands
@@ -209,11 +209,11 @@ void loop() {
           break;
         case 'i':
           Serial.println("Switches:");
-          Serial.print("  Eject Open: "); Serial.println(digitalRead(EJECT_SW_OPEN));
-          Serial.print("  Eject Closed: "); Serial.println(digitalRead(EJECT_SW_CLOSED));
+          Serial.print("  Gates Eject: "); Serial.println(digitalRead(GATE_SW_EJECT));
           Serial.print("  Gates Inlet: "); Serial.println(digitalRead(GATE_SW_INPUT));
           Serial.print("  Gates Outlet: "); Serial.println(digitalRead(GATE_SW_OUTPUT));
-          Serial.print("  Gates Closed: "); Serial.println(digitalRead(GATE_SW_CLOSED));
+          Serial.print("  Gates Right Closed: "); Serial.println(digitalRead(GATE_SW_RCLOSED));
+          Serial.print("  Gates Left Closed: "); Serial.println(digitalRead(GATE_SW_LCLOSED));
           Serial.print("  Needle index: "); Serial.println(digitalRead(NEEDLE_SW));
           Serial.println("Solenoids:");
           Serial.print("  Push: "); Serial.println(digitalRead(PUSH_EN));
@@ -277,7 +277,7 @@ void loop() {
           Serial.println("   s   - toggle spare solenoid");
           Serial.println("   d   - toggle LED lure");
           Serial.println("   l/L - toggle camera illumination (1/2)");
-          Serial.println("  c/C  - Close gates/eject gate");
+          Serial.println("  c/C  - Close left/right gates");
           Serial.println(" f/b/g - Open front/back/eject gate");
           Serial.println("   r   - rotate needle one notch");
           Serial.println("   i   - show status info");

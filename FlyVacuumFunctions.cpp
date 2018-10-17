@@ -5,10 +5,10 @@
 void setupPins() {
   pinMode(PHOTOGATE, INPUT_PULLUP);
 
-  pinMode(EJECT_SW_OPEN, INPUT);
-  pinMode(EJECT_SW_CLOSED, INPUT);
+  pinMode(GATE_SW_LCLOSED, INPUT);
+  pinMode(GATE_SW_RCLOSED, INPUT);
+  pinMode(GATE_SW_EJECT, INPUT);
   pinMode(GATE_SW_INPUT, INPUT);
-  pinMode(GATE_SW_CLOSED, INPUT);
   pinMode(GATE_SW_OUTPUT, INPUT);
   pinMode(NEEDLE_SW, INPUT);
 
@@ -25,13 +25,13 @@ void setupPins() {
   pinMode(NEEDLE_FWD, OUTPUT);
   pinMode(NEEDLE_REV, OUTPUT);
 
-  pinMode(GATE_PWM, OUTPUT);
-  pinMode(GATE_FWD, OUTPUT);
-  pinMode(GATE_REV, OUTPUT);
+  pinMode(LEFT_PWM, OUTPUT);
+  pinMode(LEFT_FWD, OUTPUT);
+  pinMode(LEFT_REV, OUTPUT);
 
-  pinMode(EJECT_PWM, OUTPUT);
-  pinMode(EJECT_FWD, OUTPUT);
-  pinMode(EJECT_REV, OUTPUT);
+  pinMode(RIGHT_PWM, OUTPUT);
+  pinMode(RIGHT_FWD, OUTPUT);
+  pinMode(RIGHT_REV, OUTPUT);
   
 }
 
@@ -56,8 +56,8 @@ Status initialize() {
 
 void motorsOff() {
   driveMotor(MOTOR_NEEDLE, MOTOR_FWD, 0);
-  driveMotor(MOTOR_EJECT, MOTOR_FWD, 0);
-  driveMotor(MOTOR_GATE, MOTOR_FWD, 0);
+  driveMotor(MOTOR_LEFT, MOTOR_FWD, 0);
+  driveMotor(MOTOR_RIGHT, MOTOR_FWD, 0);
 }
 
 void driveMotor(Motor m, MotorDirection d, int pwm) {
@@ -70,15 +70,15 @@ void driveMotor(Motor m, MotorDirection d, int pwm) {
       revPin = NEEDLE_REV;
       pwmPin = NEEDLE_PWM;
       break;
-    case MOTOR_EJECT:
-      fwdPin = EJECT_FWD;
-      revPin = EJECT_REV;
-      pwmPin = EJECT_PWM;
+    case MOTOR_LEFT:
+      fwdPin = LEFT_FWD;
+      revPin = LEFT_REV;
+      pwmPin = LEFT_PWM;
       break;
-    case MOTOR_GATE:
-      fwdPin = GATE_FWD;
-      revPin = GATE_REV;
-      pwmPin = GATE_PWM;
+    case MOTOR_RIGHT:
+      fwdPin = RIGHT_FWD;
+      revPin = RIGHT_REV;
+      pwmPin = RIGHT_PWM;
       break;
     default:
       return;
@@ -111,7 +111,7 @@ Status driveMotorUntil(Motor m, MotorDirection d, int pwm, int switchPin, boolea
     if ( millis() - startTime > t ) { timeOut = true; break; }
   }
   driveMotor(m, d, 0);
-  if ( timeOut ) { return GATE_FAILURE; }
+  if ( timeOut == true ) { return GATE_FAILURE; }
 
   return SUCCESS;
 }
@@ -133,17 +133,17 @@ Status rotateNeedle(int c) {
 Status homeGates() {
   Status s;
 
-  // First, drive MOTOR_GATE until GATE_SW_INPUT is triggered
-  s = driveMotorUntil(MOTOR_GATE, MOTOR_FWD, GATE_MOTOR_SPEED, GATE_SW_INPUT, LOW, GATE_MOTOR_TIMEOUT_MS);
-  if ( s == TIMEOUT ) { return GATE_FAILURE; }
+  // First, drive MOTOR_RIGHT until GATE_SW_OUPUT is triggered
+  s = driveMotorUntil(MOTOR_RIGHT, MOTOR_REV, GATE_MOTOR_SPEED, GATE_SW_OUTPUT, LOW, GATE_MOTOR_TIMEOUT_MS);
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
 
-  // Now reverse until GATE_SW_CLOSED is triggered
-  s = driveMotorUntil(MOTOR_GATE, MOTOR_REV, GATE_MOTOR_SPEED, GATE_SW_CLOSED, LOW, GATE_MOTOR_TIMEOUT_MS);
-  if ( s == TIMEOUT ) { return GATE_FAILURE; }
+  // Now reverse until GATE_SW_RCLOSED is triggered
+  s = driveMotorUntil(MOTOR_RIGHT, MOTOR_FWD, GATE_MOTOR_SPEED, GATE_SW_RCLOSED, LOW, GATE_MOTOR_TIMEOUT_MS);
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
 
-  // Drive MOTOR_EJECT until EJECT_SW_CLOSED is triggered
-  s = driveMotorUntil(MOTOR_EJECT, MOTOR_FWD, GATE_MOTOR_SPEED, EJECT_SW_CLOSED, LOW, GATE_MOTOR_TIMEOUT_MS);
-  if ( s == TIMEOUT ) { return GATE_FAILURE; }
+  // Drive MOTOR_LEFT until GATE_SW_LCLOSED is triggered
+  s = driveMotorUntil(MOTOR_LEFT, MOTOR_FWD, GATE_MOTOR_SPEED, GATE_SW_LCLOSED, LOW, GATE_MOTOR_TIMEOUT_MS);
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
 
   return SUCCESS;
 }
@@ -156,25 +156,28 @@ Status openGate(Gate g) {
 
   if (g == FRONT_GATE ) {
     if ( digitalRead(GATE_SW_INPUT) == LOW ) { return SUCCESS; }
-    m = MOTOR_GATE;
-    d = MOTOR_FWD;
+    // Serial.println("ML R INPUT");
+    m = MOTOR_LEFT;
+    d = MOTOR_REV;
     switchPin = GATE_SW_INPUT;
   } else if ( g == BACK_GATE ) {
     if ( digitalRead(GATE_SW_OUTPUT) == LOW ) { return SUCCESS; }
-    m = MOTOR_GATE;
+    // Serial.println("MR R OUTPUT");
+    m = MOTOR_RIGHT;
     d = MOTOR_REV;
     switchPin = GATE_SW_OUTPUT;
   } else if ( g == EJECT_GATE ) {
-    if ( digitalRead(EJECT_SW_OPEN) == LOW ) { return SUCCESS; }
-    m = MOTOR_EJECT;
-    d = MOTOR_REV;
-    switchPin = EJECT_SW_OPEN;
+    if ( digitalRead(GATE_SW_EJECT) == LOW ) { return SUCCESS; }
+    // Serial.println("MR F EJECT");
+    m = MOTOR_RIGHT;
+    d = MOTOR_FWD; 
+    switchPin = GATE_SW_EJECT;
   } else {
     return GATE_FAILURE;
   }
   
   s = driveMotorUntil(m, d, GATE_MOTOR_SPEED, switchPin, LOW, GATE_MOTOR_TIMEOUT_MS);
-  if ( s == TIMEOUT ) { return GATE_FAILURE; }
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
   
   return SUCCESS;
 }
@@ -185,26 +188,29 @@ Status closeGate(Gate g) {
   int switchPin;
   Status s;
 
-  if ((g == FRONT_GATE ) || ( g == BACK_GATE)) {
-    if ( digitalRead(GATE_SW_CLOSED) == LOW ) { return SUCCESS; }
-    m = MOTOR_GATE;
+  if ((g == BACK_GATE ) || ( g == EJECT_GATE)) {
+    if ( digitalRead(GATE_SW_RCLOSED) == LOW ) { return SUCCESS; }
+    m = MOTOR_RIGHT;
     if ( digitalRead(GATE_SW_OUTPUT) == LOW ) {
+      // Serial.println("MR F RCLOSED");
       d = MOTOR_FWD;
     } else {
+      // Serial.println("MR R RCLOSED");
       d = MOTOR_REV;
     }
-    switchPin = GATE_SW_CLOSED;
-  } else if ( g == EJECT_GATE ) {
-    if ( digitalRead(EJECT_SW_CLOSED) == LOW ) { return SUCCESS; }
-    m = MOTOR_EJECT;
+    switchPin = GATE_SW_RCLOSED;
+  } else if ( g == FRONT_GATE ) {
+    if ( digitalRead(GATE_SW_LCLOSED) == LOW ) { return SUCCESS; }
+    // Serial.println("ML F LCLOSED");
+    m = MOTOR_LEFT;
     d = MOTOR_FWD;
-    switchPin = EJECT_SW_CLOSED;
+    switchPin = GATE_SW_LCLOSED;
   } else {
     return GATE_FAILURE;
   }
 
   s = driveMotorUntil(m, d, GATE_MOTOR_SPEED, switchPin, LOW, GATE_MOTOR_TIMEOUT_MS);
-  if ( s == TIMEOUT ) { return GATE_FAILURE; }
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
 
   return SUCCESS;
 }
@@ -272,13 +278,11 @@ Status ejectFly() {
 
   s = openGate(BACK_GATE);
   if ( s != SUCCESS ) { return GATE_FAILURE; }
-  s = closeGate(EJECT_GATE);
-  if ( s != SUCCESS ) { return EJECT_GATE_FAILURE; }
+  s = openGate(FRONT_GATE);
+  if ( s != SUCCESS ) { return GATE_FAILURE; }
+
   digitalWrite(NEEDLE_NEG_EN, LOW);
   digitalWrite(EJECT_EN, HIGH); delay(FLY_EJECT_DURATION_MS); digitalWrite(EJECT_EN, LOW);
-
-  s = openGate(EJECT_GATE);
-  if ( s != SUCCESS ) { return EJECT_GATE_FAILURE; }
 
   return SUCCESS;
 }
