@@ -116,13 +116,13 @@ Status driveMotorUntil(Motor m, MotorDirection d, int pwm, int switchPin, boolea
   return SUCCESS;
 }
 
-Status rotateNeedle(int c) {
+Status rotateNeedle(int c, MotorDirection d ) {
   Status s;
 
   for (int n = 0; n < c; n++ ) {
-    s = driveMotorUntil(MOTOR_NEEDLE, MOTOR_FWD, NEEDLE_MOTOR_SPEED, NEEDLE_SW, HIGH, NEEDLE_MOTOR_TIMEOUT_MS);
+    s = driveMotorUntil(MOTOR_NEEDLE, d, NEEDLE_MOTOR_SPEED, NEEDLE_SW, HIGH, NEEDLE_MOTOR_TIMEOUT_MS);
     if ( s == TIMEOUT ) { return NEEDLE_TIMEOUT; }
-    s = driveMotorUntil(MOTOR_NEEDLE, MOTOR_FWD, NEEDLE_MOTOR_SPEED, NEEDLE_SW, LOW, NEEDLE_MOTOR_TIMEOUT_MS);
+    s = driveMotorUntil(MOTOR_NEEDLE, d, NEEDLE_MOTOR_SPEED, NEEDLE_SW, LOW, NEEDLE_MOTOR_TIMEOUT_MS);
     if ( s == TIMEOUT ) { return NEEDLE_TIMEOUT; }
   }
   
@@ -219,10 +219,10 @@ Status captureFly(int vacThresh) {
   unsigned long int startTime;
   boolean timeOut;
 
-  Serial.println("captureFly");
+  // Serial.println("captureFly");
   
   for (int n=0; n < CAPTURE_ATTEMPTS; n++) {
-    Serial.print(" attempt #"); Serial.println(n+1);
+    // Serial.print(" attempt #"); Serial.println(n+1);
     startTime = millis();
     timeOut = false;
     // Wait for photogate trigger (up to PHOTOGATE_TIMEOUT_MS)
@@ -230,23 +230,26 @@ Status captureFly(int vacThresh) {
       if ( millis() - startTime > PHOTOGATE_TIMEOUT_MS ) { timeOut = true; break; }
     }
     if ( timeOut ) {
-      Serial.println(" PG timeout");
+      // Serial.println(" PG timeout");
       if ( n == (CAPTURE_ATTEMPTS-1) ) {
         return PHOTOGATE_FAILURE;
       }
     } else {
 
-      Serial.println(" Detected fly");
+      // Serial.println(" Detected fly");
       digitalWrite(NEEDLE_NEG_EN, HIGH);
       digitalWrite(PUSH_EN, HIGH);
       delay( NEEDLE_CAPTURE_DURATION_MS );
-      Serial.print("  Pressure = "); Serial.println(getPressure());
-      if ( getPressure() < vacThresh ) {
-        Serial.println("  Captured");
+      //Serial.print("  Pressure = "); Serial.println(getPressure());
+      //Serial.println("  Assuming fly was captured.");
+      digitalWrite(PUSH_EN, LOW);
+      return SUCCESS;
+      if ( getPressure() < NOMINAL_VACUUM_THRESHOLD ) {
+        //Serial.println("  Captured");
         digitalWrite(PUSH_EN, LOW);
         return SUCCESS;
       }  
-      Serial.println("  Missed");
+      // Serial.println("  Missed");
     }
 
     digitalWrite(NEEDLE_NEG_EN, LOW);
@@ -262,11 +265,22 @@ Status captureFly(int vacThresh) {
 Status imageFly() {
   Status s;
   // Illumination!
-  
-  for (int n = 0; n < NEEDLE_ROTATION_COUNT; n++) {
+
+  // Go 180 from beginning, then reverse back to start, then 180 in other direction
+  for (int n = 0; n < NEEDLE_ROTATION_COUNT/2; n++) {
     Serial.println(n, HEX); // Send signal that fly is ready for imaging
     delay(FLY_IMAGING_DELAY_MS);
-    s = rotateNeedle(2);
+    s = rotateNeedle(2, MOTOR_FWD);
+    if ( s != SUCCESS ) { return s; }
+  }
+
+  s = rotateNeedle(NEEDLE_ROTATION_COUNT, MOTOR_REV);
+  if ( s != SUCCESS ) { return s; }
+
+  for (int n = NEEDLE_ROTATION_COUNT/2; n < NEEDLE_ROTATION_COUNT; n++) {
+    Serial.println(n, HEX); // Send signal that fly is ready for imaging
+    delay(FLY_IMAGING_DELAY_MS);
+    s = rotateNeedle(2, MOTOR_REV);
     if ( s != SUCCESS ) { return s; }
   }
 

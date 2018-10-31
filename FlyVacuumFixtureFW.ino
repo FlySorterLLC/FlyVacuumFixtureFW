@@ -139,7 +139,7 @@ void loop() {
       delay(POST_DISPENSE_WAIT_MS);
       vacThreshold = getPressure() - 5;
       if ( vacThreshold < 0 ) { vacThreshold = 20; }
-      Serial.print("Vac threshold set to "); Serial.println(vacThreshold);
+      // Serial.print("Vac threshold set to "); Serial.println(vacThreshold);
       digitalWrite(NEEDLE_NEG_EN, LOW);
       s = openGate(BACK_GATE);
       if ( s != SUCCESS ) {
@@ -265,7 +265,7 @@ void loop() {
           printStatus(s);
           break;
         case 'r':
-          s = rotateNeedle();
+          s = rotateNeedle(1);
           printStatus(s);
           break;
         case '?':

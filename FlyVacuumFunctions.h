@@ -6,14 +6,14 @@ enum {
   NEEDLE_MOTOR_TIMEOUT_MS = 500,
   GATE_MOTOR_TIMEOUT_MS = 250,
   POST_DISPENSE_WAIT_MS = 1000,
-  PHOTOGATE_TIMEOUT_MS = 10000,
+  PHOTOGATE_TIMEOUT_MS = 30000,
   NEEDLE_CAPTURE_DURATION_MS = 1500,
-  CAPTURE_ATTEMPTS = 3,
-  NOMINAL_VACUUM_THRESHOLD = 400,
+  CAPTURE_ATTEMPTS = 1,
+  NOMINAL_VACUUM_THRESHOLD = 450,
   CAPTURE_PRESSURE_THRESHOLD = 40,
   PRESSURE_READING_COUNT = 10,
   FLY_RETRY_PUFF_DURATION_MS = 250,
-  NEEDLE_ROTATION_COUNT = 15,
+  NEEDLE_ROTATION_COUNT = 16,
   FLY_IMAGING_DELAY_MS = 250,
   FLY_EJECT_DURATION_MS = 2000,
 };
@@ -51,7 +51,7 @@ Status initialize();
 void motorsOff();
 void driveMotor(Motor m, MotorDirection d, int pwm);
 Status driveMotorUntil(Motor m, MotorDirection d, int pwm, int switchPin, boolean desiredState, int t);
-Status rotateNeedle(int c = 1);
+Status rotateNeedle(int c, MotorDirection d = MOTOR_FWD);
 Status homeGates();
 Status openGate(Gate g);
 Status closeGate(Gate g);
