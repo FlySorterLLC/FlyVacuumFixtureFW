@@ -8,7 +8,7 @@
 #include "FlyVacuumFunctions.h"
 #include "pins.h"
 
-#define VERSION              "BN FW ver. 0.04"
+#define VERSION              "BN FW ver. 0.05"
 
 /*
     Commands
@@ -158,7 +158,7 @@ void loop() {
         digitalWrite(LURE_EN, LOW);
         state = FWSTATE_CAPTURED;
       } else if ( s == PHOTOGATE_FAILURE ) {
-        Serial.println("p");
+        Serial.println("t");
         state = FWSTATE_EJECTING;
       } else if ( s == CAPTURE_FAILURE ) {
         Serial.println("t");

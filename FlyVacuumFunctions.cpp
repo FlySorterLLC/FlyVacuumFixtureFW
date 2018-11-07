@@ -229,26 +229,27 @@ Status captureFly(int vacThresh) {
     while ( digitalRead(PHOTOGATE) != LOW ) {
       if ( millis() - startTime > PHOTOGATE_TIMEOUT_MS ) { timeOut = true; break; }
     }
+    
     if ( timeOut ) {
-      // Serial.println(" PG timeout");
+      Serial.println("p");
       if ( n == (CAPTURE_ATTEMPTS-1) ) {
         return PHOTOGATE_FAILURE;
       }
     } else {
 
-      // Serial.println(" Detected fly");
+      Serial.println("d");
       digitalWrite(NEEDLE_NEG_EN, HIGH);
       digitalWrite(PUSH_EN, HIGH);
-      delay( NEEDLE_CAPTURE_DURATION_MS );
-      //Serial.print("  Pressure = "); Serial.println(getPressure());
-      //Serial.println("  Assuming fly was captured.");
-      digitalWrite(PUSH_EN, LOW);
-      return SUCCESS;
-      if ( getPressure() < NOMINAL_VACUUM_THRESHOLD ) {
-        //Serial.println("  Captured");
-        digitalWrite(PUSH_EN, LOW);
-        return SUCCESS;
-      }  
+      startTime = millis();
+      while ( millis() - startTime < MAX_NEEDLE_CAPTURE_DURATION_MS ) {
+        int pressure = getPressure();
+        // Serial.print("Pressure is "); Serial.println(pressure);
+        if ( pressure < vacThresh ) {
+          digitalWrite(PUSH_EN, LOW);
+          return SUCCESS;
+        }
+        delay(1);
+      }
       // Serial.println("  Missed");
     }
 
